@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace Magento\Framework\Cache\Frontend\Adapter;
 
+use Magento\Framework\App\DeploymentConfig;
 use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\Cache\Frontend\Adapter\Symfony\MagentoDatabaseAdapter;
@@ -27,6 +28,7 @@ use Symfony\Component\Cache\Adapter\MemcachedAdapter;
 use Symfony\Component\Cache\Adapter\RedisAdapter;
 use Symfony\Component\Cache\Adapter\TagAwareAdapter;
 use Symfony\Component\Cache\Marshaller\DefaultMarshaller;
+use Symfony\Component\Cache\Marshaller\MarshallerInterface;
 
 /**
  * Symfony cache adapter factory
@@ -54,6 +56,11 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
      * @var Serialize
      */
     private Serialize $serializer;
+
+    /**
+     * @var DeploymentConfig
+     */
+    private DeploymentConfig $deploymentConfig;
 
     /**
      * @var array<string, mixed>
@@ -95,15 +102,18 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
      * @param Filesystem $filesystem
      * @param ResourceConnection $resource
      * @param Serialize $serializer PHP native serializer
+     * @param DeploymentConfig $deploymentConfig Used to derive the HMAC key for HmacMarshaller
      */
     public function __construct(
         Filesystem $filesystem,
         ResourceConnection $resource,
-        Serialize $serializer
+        Serialize $serializer,
+        DeploymentConfig $deploymentConfig
     ) {
         $this->filesystem = $filesystem;
         $this->resource = $resource;
         $this->serializer = $serializer;
+        $this->deploymentConfig = $deploymentConfig;
     }
 
     /**
@@ -247,11 +257,7 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
         $password = $options['password'] ?? null;
         $database = (int)($options['database'] ?? 0);
 
-        // OPTIMIZATION: Auto-enable igbinary if available (2-3x faster serialization)
         $serializer = $options['serializer'] ?? null;
-        if ($serializer === null && extension_loaded('igbinary')) {
-            $serializer = 'igbinary';
-        }
 
         // Persistent connection support (15-30% performance gain)
         $persistent = isset($options['persistent']) ? (bool)$options['persistent'] : true;  // Enable by default
@@ -463,29 +469,24 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
     }
 
     /**
-     * Create marshaller for serialization
+     * Create HMAC-authenticated marshaller for serialization.
      *
-     * Supports igbinary for 70% faster serialization and 58% smaller data size
+     * Every cache entry is prefixed with a keyed HMAC-SHA256 tag before storage
+     * and verified before any deserialization occurs, preventing object-injection
+     * attacks from a compromised cache backend.
      *
-     * @param string|null $serializer Serializer name ('igbinary' or null for default)
-     * @return DefaultMarshaller|null
+     * Igbinary is only used when explicitly requested via 'serializer' => 'igbinary'
+     * in the backend options AND the extension is loaded.
+     *
+     * @param string|null $serializer Serializer name ('igbinary' or null for PHP native)
+     * @return MarshallerInterface
      */
-    private function createMarshaller(?string $serializer): ?DefaultMarshaller
+    private function createMarshaller(?string $serializer): MarshallerInterface
     {
-        // If no serializer specified or not 'igbinary', return null (uses default PHP serializer)
-        if ($serializer !== 'igbinary') {
-            return null;
-        }
+        $useIgbinary = $serializer === 'igbinary' && extension_loaded('igbinary');
+        $inner = new DefaultMarshaller($useIgbinary ?: null, false);
 
-        // Check if igbinary extension is loaded
-        if (!extension_loaded('igbinary')) {
-            // Fallback to default PHP serializer if igbinary not available
-            return null;
-        }
-
-        // Create marshaller with igbinary enabled, true = use igbinary_serialize/igbinary_unserialize
-        // false = don't throw on serialization failure (graceful degradation)
-        return new DefaultMarshaller(true, false);
+        return new HmacMarshaller($inner, $this->deploymentConfig);
     }
 
     /**
