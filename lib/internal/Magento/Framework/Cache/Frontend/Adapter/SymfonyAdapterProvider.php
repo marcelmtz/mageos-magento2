@@ -498,6 +498,8 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
      * Falls back to a per-process random key on fresh installs — entries will
      * never be shared across restarts, but no deserialization risk is introduced.
      */
+    private const HMAC_DOMAIN = ':cache-integrity';
+
     private function deriveHmacKey(): string
     {
         $rawKey = (string)$this->deploymentConfig->get(ConfigOptionsListConstants::CONFIG_PATH_CRYPT_KEY);
@@ -509,7 +511,7 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
             $activeKey = bin2hex(random_bytes(16));
         }
 
-        return hash('sha256', $activeKey . ':cache-integrity', true);
+        return hash('sha256', $activeKey . self::HMAC_DOMAIN, true);
     }
 
     /**
