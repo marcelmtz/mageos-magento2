@@ -9,6 +9,7 @@ namespace Magento\Framework\Cache\Frontend\Adapter;
 
 use Magento\Framework\App\DeploymentConfig;
 use Magento\Framework\App\Filesystem\DirectoryList;
+use Magento\Framework\Config\ConfigOptionsListConstants;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\Cache\Frontend\Adapter\Symfony\MagentoDatabaseAdapter;
 use Magento\Framework\Cache\Frontend\Adapter\SymfonyAdapters\FilesystemTagAdapter;
@@ -486,7 +487,29 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
         $useIgbinary = $serializer === 'igbinary' && extension_loaded('igbinary');
         $inner = new DefaultMarshaller($useIgbinary ?: null, false);
 
-        return new HmacMarshaller($inner, $this->deploymentConfig);
+        return new HmacMarshaller($inner, $this->deriveHmacKey());
+    }
+
+    /**
+     * Derives a dedicated HMAC sub-key from the deployment crypt key.
+     *
+     * Uses the last key in the newline-separated list so that key rotation
+     * naturally invalidates old cache entries (they become cache misses).
+     * Falls back to a per-process random key on fresh installs — entries will
+     * never be shared across restarts, but no deserialization risk is introduced.
+     */
+    private function deriveHmacKey(): string
+    {
+        $rawKey = (string)$this->deploymentConfig->get(ConfigOptionsListConstants::CONFIG_PATH_CRYPT_KEY);
+
+        if ($rawKey !== '') {
+            $keys      = preg_split('/\s+/s', trim($rawKey));
+            $activeKey = (string)end($keys);
+        } else {
+            $activeKey = bin2hex(random_bytes(16));
+        }
+
+        return hash('sha256', $activeKey . ':cache-integrity', true);
     }
 
     /**

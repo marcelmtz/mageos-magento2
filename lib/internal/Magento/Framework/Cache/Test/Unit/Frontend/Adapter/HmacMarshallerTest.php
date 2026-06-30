@@ -7,9 +7,7 @@ declare(strict_types=1);
 
 namespace Magento\Framework\Cache\Test\Unit\Frontend\Adapter;
 
-use Magento\Framework\App\DeploymentConfig;
 use Magento\Framework\Cache\Frontend\Adapter\HmacMarshaller;
-use Magento\Framework\Config\ConfigOptionsListConstants;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Cache\Marshaller\MarshallerInterface;
@@ -17,22 +15,15 @@ use Symfony\Component\Cache\Marshaller\MarshallerInterface;
 class HmacMarshallerTest extends TestCase
 {
     private MarshallerInterface&MockObject $inner;
-    private DeploymentConfig&MockObject $deploymentConfig;
 
     protected function setUp(): void
     {
         $this->inner = $this->createMock(MarshallerInterface::class);
-        $this->deploymentConfig = $this->createMock(DeploymentConfig::class);
-
-        $this->deploymentConfig
-            ->method('get')
-            ->with(ConfigOptionsListConstants::CONFIG_PATH_CRYPT_KEY)
-            ->willReturn('testsecretkey');
     }
 
-    private function makeMarshaller(): HmacMarshaller
+    private function makeMarshaller(string $key = 'testsecretkey'): HmacMarshaller
     {
-        return new HmacMarshaller($this->inner, $this->deploymentConfig);
+        return new HmacMarshaller($this->inner, $key);
     }
 
     public function testMarshallPrefixesEachValueWithHmac(): void
@@ -98,23 +89,16 @@ class HmacMarshallerTest extends TestCase
         $this->makeMarshaller()->unmarshall($noSep);
     }
 
-    public function testDifferentCryptKeyProducesIncompatibleEntries(): void
+    public function testDifferentKeyProducesIncompatibleEntries(): void
     {
-        // Marshall with key A
         $this->inner->method('marshall')->willReturn(['k' => 'payload']);
-        $failed = [];
-        $tagged = $this->makeMarshaller()->marshall(['k' => 'x'], $failed)['k'];
 
-        // Unmarshall with key B → HMAC mismatch
-        $otherConfig = $this->createMock(DeploymentConfig::class);
-        $otherConfig->method('get')
-            ->with(ConfigOptionsListConstants::CONFIG_PATH_CRYPT_KEY)
-            ->willReturn('differentkey');
-        $otherMarshaller = new HmacMarshaller($this->inner, $otherConfig);
+        $failed = [];
+        $tagged = $this->makeMarshaller('key-a')->marshall(['k' => 'x'], $failed)['k'];
 
         $this->expectException(\UnexpectedValueException::class);
         $this->expectExceptionMessageMatches('/HMAC verification failed/');
-        $otherMarshaller->unmarshall($tagged);
+        $this->makeMarshaller('key-b')->unmarshall($tagged);
     }
 
     public function testFailedKeysArePassedThroughFromInnerMarshaller(): void
@@ -131,23 +115,5 @@ class HmacMarshallerTest extends TestCase
 
         $this->assertArrayHasKey('good_key', $result);
         $this->assertContains('bad_key', $failed);
-    }
-
-    public function testFreshInstallWithNoCryptKeyDoesNotThrow(): void
-    {
-        $emptyConfig = $this->createMock(DeploymentConfig::class);
-        $emptyConfig->method('get')
-            ->with(ConfigOptionsListConstants::CONFIG_PATH_CRYPT_KEY)
-            ->willReturn('');
-
-        $this->inner->method('marshall')->willReturn(['k' => 'payload']);
-        $this->inner->method('unmarshall')->willReturn('value');
-
-        $marshaller = new HmacMarshaller($this->inner, $emptyConfig);
-        $failed = [];
-        $tagged = $marshaller->marshall(['k' => 'x'], $failed)['k'];
-        $result = $marshaller->unmarshall($tagged);
-
-        $this->assertSame('value', $result);
     }
 }
