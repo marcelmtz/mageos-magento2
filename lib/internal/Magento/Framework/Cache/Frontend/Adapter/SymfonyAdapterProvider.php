@@ -469,19 +469,7 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
         }
     }
 
-    /**
-     * Create HMAC-authenticated marshaller for serialization.
-     *
-     * Every cache entry is prefixed with a keyed HMAC-SHA256 tag before storage
-     * and verified before any deserialization occurs, preventing object-injection
-     * attacks from a compromised cache backend.
-     *
-     * Igbinary is only used when explicitly requested via 'serializer' => 'igbinary'
-     * in the backend options AND the extension is loaded.
-     *
-     * @param string|null $serializer Serializer name ('igbinary' or null for PHP native)
-     * @return MarshallerInterface
-     */
+    /** @param string|null $serializer 'igbinary' (explicit opt-in only) or null for PHP native */
     private function createMarshaller(?string $serializer): MarshallerInterface
     {
         $useIgbinary = $serializer === 'igbinary' && extension_loaded('igbinary');
@@ -490,16 +478,10 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
         return new HmacMarshaller($inner, $this->deriveHmacKey());
     }
 
-    /**
-     * Derives a dedicated HMAC sub-key from the deployment crypt key.
-     *
-     * Uses the last key in the newline-separated list so that key rotation
-     * naturally invalidates old cache entries (they become cache misses).
-     * Falls back to a per-process random key on fresh installs — entries will
-     * never be shared across restarts, but no deserialization risk is introduced.
-     */
+    /** Domain separator for HMAC sub-key derivation — keeps cache signing isolated from other crypt/key uses. */
     private const HMAC_DOMAIN = ':cache-integrity';
 
+    /** Derives a domain-separated HMAC sub-key from crypt/key; falls back to a per-process random key on fresh installs. */
     private function deriveHmacKey(): string
     {
         $rawKey = (string)$this->deploymentConfig->get(ConfigOptionsListConstants::CONFIG_PATH_CRYPT_KEY);
