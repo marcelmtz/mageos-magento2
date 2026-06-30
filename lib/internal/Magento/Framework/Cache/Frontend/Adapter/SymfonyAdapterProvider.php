@@ -53,6 +53,9 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
     public const REDIS_DEFAULT_CONNECT_TIMEOUT = 2.5;
     public const REDIS_DEFAULT_CONNECT_RETRIES = 1;
 
+    /** Domain separator for HMAC sub-key derivation — keeps cache signing isolated from other crypt/key uses. */
+    private const HMAC_DOMAIN = ':cache-integrity';
+
     /**
      * @var Serialize
      */
@@ -477,9 +480,6 @@ class SymfonyAdapterProvider implements ResetAfterRequestInterface
 
         return new HmacMarshaller($inner, $this->deriveHmacKey());
     }
-
-    /** Domain separator for HMAC sub-key derivation — keeps cache signing isolated from other crypt/key uses. */
-    private const HMAC_DOMAIN = ':cache-integrity';
 
     /** Derives a domain-separated HMAC sub-key from crypt/key; falls back to a per-process random key on fresh installs. */
     private function deriveHmacKey(): string
