@@ -9,4 +9,4 @@ permissions:
 
 jobs:
   run-unit-tests:
-    uses: marcelmtz/infrastructure/.github/workflows/unit-tests.yml@fix/pin-warden-php-8.4.26
+    uses: marcelmtz/infrastructure/.github/workflows/unit-tests.yml@test/validate-nx-heap-split
