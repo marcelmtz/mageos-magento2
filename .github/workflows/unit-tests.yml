@@ -9,4 +9,4 @@ permissions:
 
 jobs:
   run-unit-tests:
-    uses: mage-os/infrastructure/.github/workflows/unit-tests.yml@main
+    uses: marcelmtz/infrastructure/.github/workflows/unit-tests.yml@test/validate-nx-heap-split

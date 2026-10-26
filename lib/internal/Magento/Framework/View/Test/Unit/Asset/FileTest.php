@@ -183,3 +183,5 @@ class FileTest extends TestCase
         $this->assertEquals('Magento_Module', $this->object->getModule());
     }
 }
+
+// CI scratch: verifying the Warden PHP pin runs the framework unit suite. Not for merge.
