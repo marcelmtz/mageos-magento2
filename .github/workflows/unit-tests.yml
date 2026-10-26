@@ -9,4 +9,4 @@ permissions:
 
 jobs:
   run-unit-tests:
-    uses: mage-os/infrastructure/.github/workflows/unit-tests.yml@main
+    uses: marcelmtz/infrastructure/.github/workflows/unit-tests.yml@fix/pin-warden-php-8.4.26
